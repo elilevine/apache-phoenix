@@ -680,9 +680,9 @@ public class MetaDataClient {
         argUpsert.setBytes(4, bytes);
         argUpsert.setBoolean(5, arg.isArrayType());
         argUpsert.setBoolean(6, arg.isConstant());
-        argUpsert.setString(7, arg.getDefaultValue() == null? null: (String)arg.getDefaultValue().getValue());
-        argUpsert.setString(8, arg.getMinValue() == null? null: (String)arg.getMinValue().getValue());
-        argUpsert.setString(9, arg.getMaxValue() == null? null: (String)arg.getMaxValue().getValue());
+        argUpsert.setString(7, arg.getDefaultValue() == null? null: arg.getDefaultValue().toString());
+        argUpsert.setString(8, arg.getMinValue() == null? null: arg.getMinValue().toString());
+        argUpsert.setString(9, arg.getMaxValue() == null? null: arg.getMaxValue().toString());
         argUpsert.execute();
     }
 
@@ -2341,7 +2341,10 @@ public class MetaDataClient {
             while (true) {
                 ColumnResolver resolver = FromCompiler.getResolver(statement, connection);
                 table = resolver.getTables().get(0).getTable();
-                List<Mutation> tableMetaData = Lists.newArrayListWithExpectedSize(2);
+                int nIndexes = table.getIndexes().size();
+                int nNewColumns = columnDefs.size();
+                List<Mutation> tableMetaData = Lists.newArrayListWithExpectedSize((1 + nNewColumns) * (nIndexes + 1));
+                List<Mutation> columnMetaData = Lists.newArrayListWithExpectedSize(nNewColumns * (nIndexes + 1));
                 if (logger.isDebugEnabled()) {
                     logger.debug(LogUtil.addCustomAnnotations("Resolved table to " + table.getName().getString() + " with seqNum " + table.getSequenceNumber() + " at timestamp " + table.getTimeStamp() + " with " + table.getColumns().size() + " columns: " + table.getColumns(), connection));
                 }
@@ -2453,7 +2456,7 @@ public class MetaDataClient {
                         }
                     }
 
-                    tableMetaData.addAll(connection.getMutationState().toMutations().next().getSecond());
+                    columnMetaData.addAll(connection.getMutationState().toMutations().next().getSecond());
                     connection.rollback();
                 } else {
                     // Check that HBase configured properly for mutable secondary indexing
@@ -2489,6 +2492,8 @@ public class MetaDataClient {
                 
                 // Force the table header row to be first
                 Collections.reverse(tableMetaData);
+                // Add column metadata afterwards, maintaining the order so columns have more predictable ordinal position
+                tableMetaData.addAll(columnMetaData);
 
                 byte[] family = families.size() > 0 ? families.iterator().next().getBytes() : null;
 
